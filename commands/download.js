@@ -28,19 +28,33 @@ export async function song(message, client, query) {
         let dlUrl = null;
         let title = fallbackTitle || 'song';
 
-        // Primary source: apis-keith
+        // Source 1: GiftedTech
         try {
-            const res = await axios.get(`https://apis-keith.vercel.app/download/dlmp3?url=${encodeURIComponent(videoUrl)}`, { timeout: 30000 });
-            const d = res.data;
-            if (d?.status && d?.result?.downloadUrl) {
-                dlUrl = d.result.downloadUrl;
-                title = d.result.title || title;
+            const res = await axios.get(`https://api.giftedtech.web.id/api/download/ytmp3?apikey=gifted&url=${encodeURIComponent(videoUrl)}`, { timeout: 25000 });
+            const d = res.data?.result;
+            if (d?.download_url) {
+                dlUrl = d.download_url;
+                title = d.title || title;
             }
         } catch (e) {
-            console.log('apis-keith failed, trying ruhend-scraper:', e.message);
+            console.log('GiftedTech ytmp3 failed, trying apis-keith:', e.message);
         }
 
-        // Fallback: ruhend-scraper
+        // Source 2: apis-keith
+        if (!dlUrl) {
+            try {
+                const res = await axios.get(`https://apis-keith.vercel.app/download/dlmp3?url=${encodeURIComponent(videoUrl)}`, { timeout: 30000 });
+                const d = res.data;
+                if (d?.status && d?.result?.downloadUrl) {
+                    dlUrl = d.result.downloadUrl;
+                    title = d.result.title || title;
+                }
+            } catch (e) {
+                console.log('apis-keith failed, trying ruhend-scraper:', e.message);
+            }
+        }
+
+        // Source 3: ruhend-scraper
         if (!dlUrl) {
             try {
                 const data = await ytmp3(videoUrl);
@@ -52,7 +66,7 @@ export async function song(message, client, query) {
         }
 
         if (!dlUrl) {
-            return client.sendMessage(remoteJid, { text: '❌ Audio not generated.' }, { quoted: message });
+            return client.sendMessage(remoteJid, { text: '❌ Audio not generated. All sources failed.' }, { quoted: message });
         }
 
         await client.sendMessage(remoteJid, {
