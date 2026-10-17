@@ -3,16 +3,20 @@ import fs from 'fs';
 import path from 'path';
 import crypto from 'crypto';
 import { exec } from 'child_process';
-import { BOT_NAME } from '../config.js';
 
-// ─── .telegram / .tgsticker / .tg <t.me/addstickers/PackName> ──────────────
+// ─── .telegram / .tgsticker / .tg <t.me/addstickers/PackName> [custom pack name] ───
 // Downloads a full Telegram sticker pack (static AND animated/video) and
 // resends every sticker on WhatsApp. Needs TELEGRAM_BOT_TOKEN in your env
 // (get one free from @BotFather) and ffmpeg installed on the server for
 // animated/video stickers.
 export async function telegram(message, client, args) {
     const remoteJid = message.key.remoteJid;
-    const text = Array.isArray(args) ? args.join(' ') : (args || '');
+    const argList = Array.isArray(args) ? args : (args || '').split(/\s+/).filter(Boolean);
+    const link = argList[0] || '';
+    // Everything after the link is the custom pack name the person wants
+    // shown when they create the pack on WhatsApp. Defaults to a generic
+    // "Stickers" label — never the bot's own name — if nothing is given.
+    const customPackName = argList.slice(1).join(' ').trim();
 
     const botToken = process.env.TELEGRAM_BOT_TOKEN;
     if (!botToken) {
@@ -21,17 +25,18 @@ export async function telegram(message, client, args) {
         }, { quoted: message });
     }
 
-    if (!text) {
+    if (!link) {
         return client.sendMessage(remoteJid, {
-            text: `📦 *TELEGRAM STICKER DOWNLOADER*\n\n❌ Please provide a Telegram sticker URL.\n\n📌 *Example:*\n.telegram https://t.me/addstickers/Porcientoreal`
+            text: `📦 *TELEGRAM STICKER DOWNLOADER*\n\n❌ Please provide a Telegram sticker URL.\n\n📌 *Example:*\n.telegram https://t.me/addstickers/Porcientoreal MyPackName`
         }, { quoted: message });
     }
 
-    if (!/(https:\/\/t\.me\/addstickers\/)/gi.test(text)) {
+    if (!/(https:\/\/t\.me\/addstickers\/)/gi.test(link)) {
         return client.sendMessage(remoteJid, { text: '❌ *Invalid URL!*' }, { quoted: message });
     }
 
-    const packName = text.replace('https://t.me/addstickers/', '').trim().split(/\s+/)[0];
+    const packName = link.replace('https://t.me/addstickers/', '').trim().split(/\s+/)[0];
+    const stickerPackLabel = customPackName || 'Stickers';
 
     let webpmuxModule;
     try {
@@ -61,7 +66,9 @@ export async function telegram(message, client, args) {
         }
 
         const total = stickerSet.result.stickers.length;
-        await client.sendMessage(remoteJid, { text: `📦 Found ${total} stickers\n⏳ Starting download...` }, { quoted: message });
+        await client.sendMessage(remoteJid, {
+            text: `📦 Found ${total} stickers\n🏷️ Pack name: ${stickerPackLabel}\n⏳ Starting download...`
+        }, { quoted: message });
 
         const tmpDir = path.join(process.cwd(), 'tmp');
         if (!fs.existsSync(tmpDir)) fs.mkdirSync(tmpDir, { recursive: true });
@@ -113,7 +120,7 @@ export async function telegram(message, client, args) {
 
                 const meta = {
                     'sticker-pack-id': crypto.randomBytes(32).toString('hex'),
-                    'sticker-pack-name': BOT_NAME || 'Stickers',
+                    'sticker-pack-name': stickerPackLabel,
                     emojis: sticker.emoji ? [sticker.emoji] : ['🤖']
                 };
 
