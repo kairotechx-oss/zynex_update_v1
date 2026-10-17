@@ -173,7 +173,7 @@ export async function info(message, client) {
 ${menuBody}
 https://zynex-pair-code.up.railway.app
 
-*⟪ 🗿 𝙿𝙾𝚆𝙴𝚁𝙴𝙳 𝙱𝚈 ${OWNER_NAME} 🗿⟫*
+*⟪ 𝙿𝙾𝚆𝙴𝚁𝙴𝙳 𝙱𝚈 𝙺𝙰𝙸𝚁𝙾 〆 𝙳𝙴𝚅 ⟫*
     `
 ;
 
