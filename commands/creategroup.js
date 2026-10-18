@@ -1,106 +1,38 @@
-import { downloadContentFromMessage } from '@whiskeysockets/baileys';
+import { jidNormalizedUser } from '@whiskeysockets/baileys';
+import { OWNER_NUM } from '../config.js';
 
-async function downloadMedia(mediaMessage, type) {
-    const stream = await downloadContentFromMessage(mediaMessage, type);
-    let buffer = Buffer.from([]);
-    for await (const chunk of stream) {
-        buffer = Buffer.concat([buffer, chunk]);
-    }
-    return buffer;
-}
-
-// ─── .groupstatus / .gcstatus / .togstatus <text> ───────────────────────────
-// Owner-only. Posts a "group status" (mentions everyone + status styling)
-// to EVERY group the bot currently participates in.
-export async function groupstatus(message, client, args, isOwner) {
+// ─── .creategc <name> / .creategroup <name> ─────────────────────────────────
+// Owner only. Creates a new WhatsApp group, adds the sender and sends the invite link.
+export async function creategroup(message, client, name, isOwner) {
     const remoteJid = message.key.remoteJid;
+    const q = { quoted: message };
 
     if (!isOwner) {
-        return client.sendMessage(remoteJid, { text: '❌ This command is for the bot owner only.' }, { quoted: message });
+        return client.sendMessage(remoteJid, { text: '❌ This command is for the bot owner only.' }, q);
     }
 
-    const quotedMessage = message.message?.extendedTextMessage?.contextInfo?.quotedMessage;
-    const textFromArgs = args ? args.join(' ') : '';
-    const textFromQuote = quotedMessage?.conversation ||
-        quotedMessage?.extendedTextMessage?.text ||
-        quotedMessage?.imageMessage?.caption ||
-        quotedMessage?.videoMessage?.caption || '';
-
-    const teks = textFromArgs || textFromQuote;
-    let media = null;
-    let type = null;
-
-    if (quotedMessage) {
-        if (quotedMessage.imageMessage) {
-            type = 'image';
-            media = await downloadMedia(quotedMessage.imageMessage, 'image');
-        } else if (quotedMessage.videoMessage) {
-            type = 'video';
-            media = await downloadMedia(quotedMessage.videoMessage, 'video');
-        } else if (quotedMessage.audioMessage) {
-            type = 'audio';
-            media = await downloadMedia(quotedMessage.audioMessage, 'audio');
-        }
-    }
-
-    if (!media && !teks) {
-        return client.sendMessage(remoteJid, {
-            text: '❌ Please provide a message or reply to a media.\nExample: .groupstatus Hello everyone!'
-        }, { quoted: message });
-    }
+    const subject = String(name || '').trim().slice(0, 25) || 'KAIRO ZYNEX';
 
     try {
-        const getGroups = await client.groupFetchAllParticipating();
-        const groupIds = Object.keys(getGroups);
+        const me = jidNormalizedUser(client.user.id);
+        const sender = message.key.participant || (remoteJid.endsWith('@g.us') ? null : remoteJid);
+        const ownerJid = `${String(OWNER_NUM).replace(/\D/g, '')}@s.whatsapp.net`;
 
-        await client.sendMessage(remoteJid, { text: `🚀 Sending status to ${groupIds.length} groups...` }, { quoted: message });
+        const members = [sender, ownerJid]
+            .filter(Boolean)
+            .map(j => jidNormalizedUser(j))
+            .filter((j, i, arr) => j !== me && arr.indexOf(j) === i);
 
-        let successCount = 0;
+        const group = await client.groupCreate(subject, members);
+        const code = await client.groupInviteCode(group.id);
 
-        for (const id of groupIds) {
-            try {
-                const groupMetadata = await client.groupMetadata(id);
-                const peserta = groupMetadata.participants.map(v => v.id);
-
-                if (!media) {
-                    await client.sendMessage(id, {
-                        text: teks,
-                        contextInfo: { mentionedJid: peserta, isGroupStatus: true }
-                    }, { backgroundColor: '#7c3aed', statusJidList: peserta });
-                } else if (type === 'image') {
-                    await client.sendMessage(id, {
-                        image: media,
-                        caption: teks,
-                        contextInfo: { mentionedJid: peserta, isGroupStatus: true }
-                    }, { statusJidList: peserta });
-                } else if (type === 'video') {
-                    await client.sendMessage(id, {
-                        video: media,
-                        caption: teks,
-                        contextInfo: { mentionedJid: peserta, isGroupStatus: true }
-                    }, { statusJidList: peserta });
-                } else if (type === 'audio') {
-                    await client.sendMessage(id, {
-                        audio: media,
-                        mimetype: 'audio/mp4',
-                        ptt: false,
-                        contextInfo: { mentionedJid: peserta, isGroupStatus: true }
-                    }, { statusJidList: peserta });
-                }
-
-                successCount++;
-                await new Promise(res => setTimeout(res, 2000));
-            } catch (err) {
-                console.log(`Failed to send to: ${id}`);
-            }
-        }
-
-        await client.sendMessage(remoteJid, { text: `✅ Status sent successfully to ${successCount} groups!` }, { quoted: message });
-
+        await client.sendMessage(remoteJid, {
+            text: `✅ *Group created:* ${subject}\n🔗 https://chat.whatsapp.com/${code}\n\n> *Powered by KAIRO ZYNEX*`
+        }, q);
     } catch (e) {
-        console.error(e);
-        await client.sendMessage(remoteJid, { text: '❌ An error occurred.' }, { quoted: message });
+        console.error('[creategc]', e);
+        await client.sendMessage(remoteJid, { text: `❌ Could not create the group: ${e?.message || e}` }, q);
     }
 }
 
-export default { groupstatus };
+export default { creategroup };
