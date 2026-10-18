@@ -205,6 +205,8 @@ async function handleIncomingMessage(event, client) {
                     return await configCommands.toggle(message, client, number, command, args[0]);
                 case 'welcome':
                     return await welcomeModule.welcomeToggle(message, client, args, isOwner);
+                case 'goodbye':
+                    return await welcomeModule.goodbyeToggle(message, client, args, isOwner);
                 case 'setprefix': return await configCommands.setPrefix(message, client, number, args.join(' '));
                 case 'getconfig': return await configCommands.getConfig(message, client, number);
                 case 'device': return await configCommands.device(message, client);
