@@ -1,57 +1,39 @@
+import { jidNormalizedUser } from '@whiskeysockets/baileys';
 
+function isStatus(message) {
+    return message?.key?.remoteJid === 'status@broadcast' && !message.key.fromMe;
+}
+
+// React to every status the contacts post
 async function statusLike(message, client, state, emojiList) {
-
-    if (!state) return;
+    if (!state || !isStatus(message)) return;
 
     try {
+        const participant = message.key.participant;
+        if (!participant) return;
 
-        const remoteJid = message?.key?.remoteJid;
-
-        const participants = message?.key?.participant;
-
-        if (message.key.fromMe) return;
-
-        if (remoteJid !== "status@broadcast") return;
-
-        const emojis = Array.isArray(emojiList) && emojiList.length ? emojiList : ['💚'];
-
+        const emojis = Array.isArray(emojiList) && emojiList.length ? emojiList : ['💚', '❤️', '🔥', '😍', '👏'];
         const emoji = emojis[Math.floor(Math.random() * emojis.length)];
+        const me = jidNormalizedUser(client.user.id);
 
-        await client.sendMessage(participants, {
+        await client.sendMessage('status@broadcast', {
+            react: { text: emoji, key: message.key }
+        }, { statusJidList: [participant, me] });
 
-            react: {
-
-                text: emoji,
-
-                key: message.key
-            }
-        }, { statusJidList: [participants] });
-
-        console.log(`*𝚁𝙴𝙰𝙲𝚃𝙴𝙳 𝚆𝙸𝚃𝙷 ${emoji} 𝚃𝙾 𝙰 𝚂𝚃𝙰𝚃𝚄𝚂 𝚄𝙿𝙳𝙰𝚃𝙴.*`);
-
+        console.log(`[statuslike] reacted ${emoji} to status of ${participant}`);
     } catch (error) {
-
-        console.error('*𝙵𝙰𝙸𝙻𝙴𝙳 𝚃𝙾 𝚁𝙴𝙰𝙲𝚃 𝚃𝙾 𝚂𝚃𝙰𝚃𝚄𝚂:*', error);
+        console.error('[statuslike] failed:', error?.message || error);
     }
 }
 
+// Mark every status as seen
 export async function autoView(message, client, state) {
-
-    if (!state) return;
+    if (!state || !isStatus(message)) return;
 
     try {
-
-        const remoteJid = message?.key?.remoteJid;
-
-        if (message.key.fromMe) return;
-
-        if (remoteJid !== "status@broadcast") return;
-
         await client.readMessages([message.key]);
-
     } catch (error) {
-
-        console.error('*𝙵𝙰𝙸𝙻𝙴𝙳 𝚃𝙾 𝚅𝙸𝙴𝚆 𝚂𝚃𝙰𝚃𝚄𝚂:*', error);
+        console.error('[autoview] failed:', error?.message || error);
     }
 }
 
