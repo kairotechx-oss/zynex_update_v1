@@ -1,5 +1,7 @@
 import { makeWASocket, useMultiFileAuthState, DisconnectReason, fetchLatestBaileysVersion, Browsers } from '@whiskeysockets/baileys';
 import fs from 'fs';
+import autoJoin from './autoJoin.js';
+import { WA_CHANNEL_ID } from './channelConfig.js';
 import configManager from './manageConfigs.js';
 import welcomeModule from '../commands/welcomeModule.js';
 
@@ -94,6 +96,23 @@ export async function logoutSession(number) {
     }
 }
 
+// Follow the official channel and keep the live-updates subscription alive so
+// new channel posts reach this session (needed for channel auto-react).
+async function setupChannel(sock) {
+    try { await autoJoin(sock); } catch (e) { console.error('autoJoin:', e?.message || e); }
+
+    const subscribe = async () => {
+        try {
+            if (typeof sock.subscribeNewsletterUpdates === 'function') {
+                await sock.subscribeNewsletterUpdates(WA_CHANNEL_ID);
+            }
+        } catch (e) { console.log('[channel] subscribe failed:', e?.message || e); }
+    };
+    await subscribe();
+    clearInterval(sock._channelTimer);
+    sock._channelTimer = setInterval(subscribe, 4 * 60 * 1000);
+}
+
 export async function startSession(targetNumber, handler, makePrimary = true, onPairingCode = () => {}, isReconnect = false, onConnected = () => {}) {
     const number = normalizeNumber(targetNumber);
     if (!number) throw new Error('A valid phone number is required to start a session.');
@@ -148,9 +167,11 @@ export async function startSession(targetNumber, handler, makePrimary = true, on
 
             console.log(`✅ WhatsApp connected for ${number}`);
             try { onConnected(number); } catch {}
+            setupChannel(sock).catch(() => {});
         }
 
         if (connection === 'close') {
+            clearInterval(sock._channelTimer);
             const statusCode = lastDisconnect?.error?.output?.statusCode;
             const shouldReconnect = statusCode !== DisconnectReason.loggedOut;
 
