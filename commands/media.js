@@ -1,6 +1,6 @@
 import fs from 'fs'
 import path from 'path'
-import { exec } from 'child_process'
+import { exec, execFile } from 'child_process'
 
 import { downloadMediaMessage } from '@whiskeysockets/baileys';
 import { Sticker } from 'wa-sticker-formatter';
@@ -99,7 +99,7 @@ function runFfmpeg(args, timeout = 90000) {
 
 // Video/GIF -> animated WebP (512x512, max 8s, kept under ~900 KB for WhatsApp)
 async function videoToWebp(inputPath, outputPath) {
-    const vf = 'fps=12,scale=512:512:force_original_aspect_ratio=decrease,pad=512:512:-1:-1:color=0x00000000,format=rgba';
+    const vf = 'fps=12,scale=512:512:force_original_aspect_ratio=decrease,pad=512:512:-1:-1:color=black@0,format=rgba';
     const attempts = [
         { q: 45, t: 8 },
         { q: 30, t: 8 },
@@ -111,13 +111,35 @@ async function videoToWebp(inputPath, outputPath) {
         await runFfmpeg([
             '-y', '-i', inputPath, '-t', String(t), '-an', '-vf', vf,
             '-c:v', 'libwebp', '-lossless', '0', '-compression_level', '4',
-            '-q:v', String(q), '-loop', '0', '-preset', 'default', '-vsync', '0',
+            '-q:v', String(q), '-loop', '0', '-preset', 'default',
             '-threads', '2', outputPath
         ]);
         lastSize = fs.statSync(outputPath).size;
         if (lastSize <= 900 * 1024) return;
     }
     throw new Error(`Video too heavy for a sticker (${Math.round(lastSize / 1024)} KB). Try a shorter video.`);
+}
+
+// Writes WhatsApp pack/author metadata straight into a WebP (no extra library needed)
+function addWebpExif(webp, pack, author) {
+    if (webp.length < 30 || webp.toString('ascii', 12, 16) !== 'VP8X') return webp;
+    const json = Buffer.from(JSON.stringify({
+        'sticker-pack-id': `kairo-zynex-${Date.now()}`,
+        'sticker-pack-name': pack,
+        'sticker-pack-publisher': author,
+        emojis: ['😀']
+    }), 'utf-8');
+    const header = Buffer.from([0x49, 0x49, 0x2A, 0x00, 0x08, 0x00, 0x00, 0x00, 0x01, 0x00, 0x41, 0x57, 0x07, 0x00, 0x00, 0x00, 0x00, 0x00, 0x16, 0x00, 0x00, 0x00]);
+    const exif = Buffer.concat([header, json]);
+    exif.writeUIntLE(json.length, 14, 4);
+    const chunkHead = Buffer.alloc(8);
+    chunkHead.write('EXIF', 0, 'ascii');
+    chunkHead.writeUInt32LE(exif.length, 4);
+    const pad = exif.length % 2 ? Buffer.from([0]) : Buffer.alloc(0);
+    const out = Buffer.concat([webp, chunkHead, exif, pad]);
+    out[20] |= 0x08; // VP8X flags: EXIF present
+    out.writeUInt32LE(out.length - 8, 4);
+    return out;
 }
 
 function withTimeout(promise, ms) {
@@ -174,13 +196,8 @@ export async function sticker(message, client) {
         const webp = fs.readFileSync(outPath);
 
         let finalSticker = webp;
-        try {
-            const st = new Sticker(webp, { pack: 'KAIRO ZYNEX', author: 'KAIRO ZYNEX', type: 'full', quality: 50 });
-            const withMeta = await withTimeout(st.toBuffer(), 25000);
-            if (withMeta?.length && withMeta.length <= 1024 * 1024) finalSticker = withMeta;
-        } catch (metaErr) {
-            console.log('sticker metadata skipped:', metaErr.message);
-        }
+        try { finalSticker = addWebpExif(webp, 'KAIRO ZYNEX', 'KAIRO ZYNEX'); }
+        catch (metaErr) { console.log('sticker metadata skipped:', metaErr.message); }
 
         await client.sendMessage(remoteJid, { sticker: finalSticker }, { quoted: message });
     } catch (e) {
