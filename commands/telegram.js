@@ -3,12 +3,13 @@ import fs from 'fs';
 import path from 'path';
 import crypto from 'crypto';
 import { exec } from 'child_process';
+import ffmpegPath from 'ffmpeg-static';
 
 // ─── .telegram / .tgsticker / .tg <t.me/addstickers/PackName> [custom pack name] ───
 // Downloads a full Telegram sticker pack (static AND animated/video) and
 // resends every sticker on WhatsApp. Needs TELEGRAM_BOT_TOKEN in your env
-// (get one free from @BotFather) and ffmpeg installed on the server for
-// animated/video stickers.
+// (get one free from @BotFather). ffmpeg is bundled via the ffmpeg-static
+// npm package, so no system/Railway ffmpeg install is required anymore.
 export async function telegram(message, client, args) {
     const remoteJid = message.key.remoteJid;
     const argList = Array.isArray(args) ? args : (args || '').split(/\s+/).filter(Boolean);
@@ -96,9 +97,10 @@ export async function telegram(message, client, args) {
                     const outPath = path.join(tmpDir, `out_${Date.now()}_${i}.webp`);
                     fs.writeFileSync(inPath, buf);
 
+                    const ffmpegBin = ffmpegPath || 'ffmpeg';
                     const cmd = sticker.is_video
-                        ? `ffmpeg -y -i "${inPath}" -vf "scale=512:512:force_original_aspect_ratio=decrease,fps=15,pad=512:512:(ow-iw)/2:(oh-ih)/2:color=#00000000" -c:v libwebp -loop 0 -pix_fmt yuva420p -quality 75 "${outPath}"`
-                        : `ffmpeg -y -i "${inPath}" -vf "scale=512:512:force_original_aspect_ratio=decrease,pad=512:512:(ow-iw)/2:(oh-ih)/2:color=#00000000" -c:v libwebp -loop 0 -pix_fmt yuva420p -quality 75 "${outPath}"`;
+                        ? `"${ffmpegBin}" -y -i "${inPath}" -vf "scale=512:512:force_original_aspect_ratio=decrease,fps=15,pad=512:512:(ow-iw)/2:(oh-ih)/2:color=#00000000" -c:v libwebp -loop 0 -pix_fmt yuva420p -quality 75 "${outPath}"`
+                        : `"${ffmpegBin}" -y -i "${inPath}" -vf "scale=512:512:force_original_aspect_ratio=decrease,pad=512:512:(ow-iw)/2:(oh-ih)/2:color=#00000000" -c:v libwebp -loop 0 -pix_fmt yuva420p -quality 75 "${outPath}"`;
 
                     await new Promise((resolve, reject) => {
                         exec(cmd, { timeout: 30000 }, (err, stdout, stderr) => {
