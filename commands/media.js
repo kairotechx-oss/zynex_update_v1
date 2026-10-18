@@ -45,38 +45,49 @@ export async function photo(message, client) {
 
 export async function tomp3(message, client) {
 
+    const remoteJid = message.key.remoteJid;
+    const rawQuoted = message.message?.extendedTextMessage?.contextInfo?.quotedMessage;
+    const quoted = unwrapMessage(rawQuoted);
+    const own = unwrapMessage(message.message);
+
+    const source = quoted?.videoMessage || quoted?.audioMessage ||
+        (!quoted && (own?.videoMessage || own?.audioMessage));
+
+    if (!source) {
+        return client.sendMessage(remoteJid, { text: '❌ *Reply to a video with .toaudio*' }, { quoted: message });
+    }
+
+    const stamp = Date.now();
+    const tmpDir = './temp';
+    if (!fs.existsSync(tmpDir)) fs.mkdirSync(tmpDir, { recursive: true });
+    const inputPath = `${tmpDir}/video-${stamp}.mp4`;
+    const outputPath = `${tmpDir}/audio-${stamp}.mp3`;
+
     try {
-        const quoted = message.message?.extendedTextMessage?.contextInfo?.quotedMessage;
+        const ctx = message.message?.extendedTextMessage?.contextInfo;
+        const wrapped = quoted
+            ? { key: { remoteJid, id: ctx?.stanzaId, participant: ctx?.participant, fromMe: false }, message: quoted }
+            : { key: message.key, message: own };
 
-        const target = quoted?.videoMessage;
+        const buffer = await downloadMediaMessage(wrapped, 'buffer', {}, { reuploadRequest: client.updateMediaMessage });
+        if (!buffer || !buffer.length) throw new Error('Could not download the media');
 
-        if (!target) return await client.sendMessage(message.key.remoteJid, { text: "No video found." })
+        fs.writeFileSync(inputPath, buffer);
 
-        const buffer = await downloadMediaMessage({ message: quoted, client }, "buffer");
+        await runFfmpeg(['-y', '-i', inputPath, '-vn', '-acodec', 'libmp3lame', '-ab', '128k', '-ar', '44100', outputPath]);
 
-        const inputPath = `./temp/video-${Date.now()}.mp4`
-
-        const outputPath = `./temp/audio-${Date.now()}.mp3`
-
-        if (!fs.existsSync('./temp')) fs.mkdirSync('./temp')
-            
-        fs.writeFileSync(inputPath, buffer)
-
-        await new Promise((resolve, reject) => {
-            exec(`ffmpeg -i ${inputPath} -vn -ab 128k -ar 44100 -y ${outputPath}`, (err) => {
-                if (err) return reject(err)
-                resolve()
-            })
-        })
-
-        await client.sendMessage(message.key.remoteJid, { audio: fs.readFileSync(outputPath), mimetype: 'audio/mp4', ptt: false })
-
-        fs.unlinkSync(inputPath)
-        fs.unlinkSync(outputPath)
+        await client.sendMessage(remoteJid, {
+            audio: fs.readFileSync(outputPath),
+            mimetype: 'audio/mpeg',
+            ptt: false
+        }, { quoted: message });
 
     } catch (e) {
-        console.log(e)
-        await client.sendMessage(message.key.remoteJid, { text: "*❌ 𝙴𝚁𝚁𝙾𝚁 𝚃𝙾 𝙲𝙾𝙽𝚅𝙴𝚁𝚃𝙸𝙽𝙶 𝚅𝙸𝙳𝙴𝙾 𝚃𝙾 𝙰𝚄𝙳𝙸𝙾*" })
+        console.error('toaudio:', e);
+        await client.sendMessage(remoteJid, { text: `*❌ 𝙴𝚁𝚁𝙾𝚁 𝚃𝙾 𝙲𝙾𝙽𝚅𝙴𝚁𝚃𝙸𝙽𝙶 𝚅𝙸𝙳𝙴𝙾 𝚃𝙾 𝙰𝚄𝙳𝙸𝙾: ${e.message}*` }, { quoted: message });
+    } finally {
+        try { fs.unlinkSync(inputPath); } catch {}
+        try { fs.unlinkSync(outputPath); } catch {}
     }
 }
 
