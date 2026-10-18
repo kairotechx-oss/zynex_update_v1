@@ -1,9 +1,12 @@
+
 import axios from 'axios';
 import fs from 'fs';
 import path from 'path';
 import configManager from '../utils/manageConfigs.js';
 
 const DEFAULT_AVATAR = 'https://img.pyrocdn.com/dbKUgahg.png';
+const BOT_URL = 'https://zynex-pair-code.up.railway.app';
+const CHANNEL_URL = 'https://whatsapp.com/channel/0029VbDmi1g77qVOA4cfRq13';
 
 // ─── per-group config ───────────────────────────────────────────────────────
 function getGroupCfg(groupId) {
@@ -41,7 +44,9 @@ function fill(template, { number, group, description }) {
     return template
         .replace(/{user}/g, `@${number}`)
         .replace(/{group}/g, group)
-        .replace(/{description}/g, description);
+        .replace(/{description}/g, description)
+        .replace(/{bot}/g, BOT_URL)
+        .replace(/{channel}/g, CHANNEL_URL);
 }
 
 async function fetchImage(url) {
@@ -69,7 +74,7 @@ async function sendJoinLeave(sock, groupId, groupMetadata, participant, type) {
             month: '2-digit', day: '2-digit', year: 'numeric',
             hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: true
         });
-        caption = `╭╼━≪•𝙽𝙴𝚆 𝙼𝙴𝙼𝙱𝙴𝚁•≫━╾╮\n┃𝚆𝙴𝙻𝙲𝙾𝙼𝙴: @${number} 👋\n┃Member count: #${memberCount}\n┃𝚃𝙸𝙼𝙴: ${timeString}⏰\n╰━━━━━━━━━━━━━━━╯\n\n*@${number}* Welcome to *${groupName}*! 🎉\n*Group 𝙳𝙴𝚂𝙲𝚁𝙸𝙿𝚃𝙸𝙾𝙽*\n${groupDesc}\n\n> *Powered by KAIRO ZYNEX*`;
+        caption = `╭╼━≪•𝙽𝙴𝚆 𝙼𝙴𝙼𝙱𝙴𝚁•≫━╾╮\n┃𝚆𝙴𝙻𝙲𝙾𝙼𝙴: @${number} 👋\n┃Member count: #${memberCount}\n┃𝚃𝙸𝙼𝙴: ${timeString}⏰\n╰━━━━━━━━━━━━━━━╯\n\n*@${number}* Welcome to *${groupName}*! 🎉\n*Group 𝙳𝙴𝚂𝙲𝚁𝙸𝙿𝚃𝙸𝙾𝙽*\n${groupDesc}\n\n🤖 *Bot:* ${BOT_URL}\n📢 *Channel:* ${CHANNEL_URL}\n\n> *Powered by KAIRO ZYNEX*`;
     } else {
         caption = `*@${number}* we will never miss you! 👋\n\n> *Powered by KAIRO ZYNEX*`;
     }
@@ -175,7 +180,7 @@ async function toggle(message, client, args, isOwner, kind) {
     if (customText) {
         cfg[textKey] = customText;
         configManager.save();
-        return client.sendMessage(remoteJid, { text: `✅ Custom ${kind} message saved.\nPlaceholders: {user} {group} {description}` }, q);
+        return client.sendMessage(remoteJid, { text: `✅ Custom ${kind} message saved.\nPlaceholders: {user} {group} {description} {bot} {channel}` }, q);
     }
 
     const cmd = `.${kind}`;
