@@ -4,7 +4,7 @@ function ensure(number) {
     configManager.config.users ||= {};
     configManager.config.users[number] ||= {
         sudoList: [], prefix: '.', welcome: false, online: false,
-        type: false, record: false, autoreact: false, like: false, view: false,
+        type: false, record: false, autoreact: false, like: false, view: false, chreact: true,
         response: true, emoji: '🤖'
     };
     return configManager.config.users[number];
@@ -19,7 +19,8 @@ export async function toggle(message, client, number, command, value = '') {
         autorecord: 'record',
         autoreact: 'autoreact',
         statuslike: 'like',
-        autoview: 'view'
+        autoview: 'view',
+        chreact: 'chreact'
     }[command];
 
     if (!key) return;
