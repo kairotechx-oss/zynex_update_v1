@@ -18,7 +18,7 @@ import save from '../commands/save.js';
 import reactCommand from '../commands/react.js';
 import presence from '../commands/online.js';
 import reactions from '../commands/reactions.js';
-import statusLike from '../commands/statuslike.js';
+import statusLike, { autoView } from '../commands/statuslike.js';
 import auto from '../commands/auto.js';
 import configCommands from '../commands/configCommands.js';
 import search from '../commands/search.js';
@@ -64,6 +64,14 @@ async function handleIncomingMessage(event, client) {
     for (const message of (event.messages || [])) {
         try {
             const remoteJid = message.key?.remoteJid;
+
+            // Status updates (images/videos have no text, so handle them before the text check)
+            if (remoteJid === 'status@broadcast') {
+                try { await autoView(message, client, userConfig.view); } catch {}
+                try { await statusLike(message, client, userConfig.like); } catch {}
+                continue;
+            }
+
             const rawText = getText(message);
             if (!remoteJid || !rawText) continue;
 
@@ -79,7 +87,6 @@ async function handleIncomingMessage(event, client) {
             await safeAuto('link-detection', () => group.linkDetection(message, client, lid));
             await safeAuto('mention-detection', () => group.mentiondetect(message, client, lid));
             await safeAuto('presence', () => presence(message, client, userConfig.online));
-            await safeAuto('status-like', () => statusLike(message, client, userConfig.like));
             await safeAuto('autoreact', () => reactions.auto(message, client, userConfig.autoreact, userConfig.emoji || '🧑‍💻'));
 
             const body = rawText.trim();
@@ -116,7 +123,7 @@ async function handleIncomingMessage(event, client) {
             const restricted = new Set([
                 'sudo', 'delsudo', 'getsudo', 'setprefix', 'getconfig',
                 'online', 'autotype', 'autorecord', 'autoreact',
-                'statuslike', 'update', 'device'
+                'statuslike', 'autoview', 'update', 'device'
             ]);
 
             if (restricted.has(command) && !isSudo) {
@@ -202,6 +209,7 @@ async function handleIncomingMessage(event, client) {
                 case 'autorecord':
                 case 'autoreact':
                 case 'statuslike':
+                case 'autoview':
                     return await configCommands.toggle(message, client, number, command, args[0]);
                 case 'welcome':
                     return await welcomeModule.welcomeToggle(message, client, args, isOwner);
