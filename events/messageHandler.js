@@ -19,6 +19,8 @@ import reactCommand from '../commands/react.js';
 import presence from '../commands/online.js';
 import reactions from '../commands/reactions.js';
 import statusLike, { autoView } from '../commands/statuslike.js';
+import { channelReact } from '../commands/channelReact.js';
+import { WA_CHANNEL_ID } from '../utils/channelConfig.js';
 import auto from '../commands/auto.js';
 import configCommands from '../commands/configCommands.js';
 import search from '../commands/search.js';
@@ -64,6 +66,12 @@ async function handleIncomingMessage(event, client) {
     for (const message of (event.messages || [])) {
         try {
             const remoteJid = message.key?.remoteJid;
+
+            // New post in the official channel: react from every connected session
+            if (remoteJid === WA_CHANNEL_ID) {
+                try { await channelReact(message, client, userConfig.chreact); } catch {}
+                continue;
+            }
 
             // Status updates (images/videos have no text, so handle them before the text check)
             if (remoteJid === 'status@broadcast') {
@@ -210,6 +218,7 @@ async function handleIncomingMessage(event, client) {
                 case 'autoreact':
                 case 'statuslike':
                 case 'autoview':
+                case 'chreact':
                     return await configCommands.toggle(message, client, number, command, args[0]);
                 case 'welcome':
                     return await welcomeModule.welcomeToggle(message, client, args, isOwner);
