@@ -1,5 +1,6 @@
 import axios from 'axios';
 import yts from 'yt-search';
+import { ytmp4 } from 'ruhend-scraper';
 
 const AXIOS_DEFAULTS = {
     timeout: 60000,
@@ -50,6 +51,31 @@ async function getOkatsuVideoByUrl(youtubeUrl) {
         return { download: res.data.result.mp4, title: res.data.result.title };
     }
     throw new Error('Okatsu returned no mp4');
+}
+
+async function getGiftedVideoByUrl(youtubeUrl) {
+    const apiUrl = `https://api.giftedtech.web.id/api/download/ytmp4?apikey=gifted&url=${encodeURIComponent(youtubeUrl)}`;
+    const res = await tryRequest(() => axios.get(apiUrl, AXIOS_DEFAULTS), 2);
+    const d = res?.data?.result;
+    const link = d?.download_url || d?.dl_url || d?.downloadUrl || d?.video || d?.url;
+    if (link) return { download: link, title: d.title };
+    throw new Error('GiftedTech returned no download');
+}
+
+async function getKeithVideoByUrl(youtubeUrl) {
+    const apiUrl = `https://apis-keith.vercel.app/download/dlmp4?url=${encodeURIComponent(youtubeUrl)}`;
+    const res = await tryRequest(() => axios.get(apiUrl, AXIOS_DEFAULTS), 2);
+    const d = res?.data?.result;
+    const link = d?.downloadUrl || d?.download_url || d?.url;
+    if (res?.data?.status && link) return { download: link, title: d.title };
+    throw new Error('Keith returned no download');
+}
+
+async function getRuhendVideoByUrl(youtubeUrl) {
+    const data = await ytmp4(youtubeUrl);
+    const link = data?.video || data?.url || data?.download;
+    if (link) return { download: link, title: data?.title };
+    throw new Error('ruhend-scraper returned no download');
 }
 
 async function downloadBuffer(url) {
@@ -106,6 +132,9 @@ export async function video(message, client, searchQuery) {
         } catch (e) { console.error('[VIDEO] thumb error:', e?.message || e); }
 
         const apiMethods = [
+            { name: 'GiftedTech', method: () => getGiftedVideoByUrl(videoUrl) },
+            { name: 'Ruhend', method: () => getRuhendVideoByUrl(videoUrl) },
+            { name: 'Keith', method: () => getKeithVideoByUrl(videoUrl) },
             { name: 'EliteProTech', method: () => getEliteProTechVideoByUrl(videoUrl) },
             { name: 'Yupra', method: () => getYupraVideoByUrl(videoUrl) },
             { name: 'Okatsu', method: () => getOkatsuVideoByUrl(videoUrl) }
