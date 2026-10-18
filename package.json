@@ -27,7 +27,6 @@
   },
   "homepage": "https://github.com/Danscot/senku-xmd#readme",
   "dependencies": {
-    "@vreden/youtube_scraper": "^1.2.0",
     "@whiskeysockets/baileys": "^7.0.0-rc.14",
     "axios": "^1.7.9",
     "ffmpeg-static": "^5.2.0",
