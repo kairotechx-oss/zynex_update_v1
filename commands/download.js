@@ -1,89 +1,102 @@
-import { ytmp3, ytmp4 } from 'ruhend-scraper';
+import { ytmp3 as vredenYtmp3 } from '@vreden/youtube_scraper';
+import { ytmp4 } from 'ruhend-scraper';
 import yts from 'yt-search';
 import fetch from 'node-fetch';
 import axios from 'axios';
+
+function sleep(ms) {
+    return new Promise(r => setTimeout(r, ms));
+}
 
 // ─── .song / .play / .mp3 / .ytmp3 / .music / .audio ───────────────────────
 export async function song(message, client, query) {
     const remoteJid = message.key.remoteJid;
 
     if (!query) {
-        return client.sendMessage(remoteJid, { text: '❌ Provide a song name or YouTube link.\nEx: .play Faded Alan Walker' }, { quoted: message });
+        return client.sendMessage(remoteJid, {
+            text: '❌ Provide a song name.\nEx: .play Faded Alan Walker'
+        }, { quoted: message });
     }
 
+    try { await client.sendMessage(remoteJid, { react: { text: '⏳', key: message.key } }); } catch {}
+
+    let search;
     try {
-        let videoUrl = query;
-        let fallbackTitle = null;
+        search = await yts(query);
+    } catch (searchErr) {
+        try { await client.sendMessage(remoteJid, { react: { text: '❌', key: message.key } }); } catch {}
+        return client.sendMessage(remoteJid, { text: '❌ Search failed.' }, { quoted: message });
+    }
 
-        if (!query.includes('youtube.com') && !query.includes('youtu.be')) {
-            const search = await yts(query);
-            const video = search?.videos?.[0];
-            if (!video) {
-                return client.sendMessage(remoteJid, { text: '❌ No results found.' }, { quoted: message });
-            }
-            videoUrl = video.url;
-            fallbackTitle = video.title;
-        }
+    if (!search.videos?.length) {
+        try { await client.sendMessage(remoteJid, { react: { text: '❌', key: message.key } }); } catch {}
+        return client.sendMessage(remoteJid, { text: '❌ Song not found.' }, { quoted: message });
+    }
 
-        let dlUrl = null;
-        let title = fallbackTitle || 'song';
+    const video = search.videos[0];
+    let data;
 
-        // Source 1: GiftedTech
+    // Primary: @vreden/youtube_scraper, retried once.
+    try {
+        data = await vredenYtmp3(video.url);
+    } catch (e1) {
+        await sleep(2500);
         try {
-            const res = await axios.get(`https://api.giftedtech.web.id/api/download/ytmp3?apikey=gifted&url=${encodeURIComponent(videoUrl)}`, { timeout: 25000 });
-            const d = res.data?.result;
-            if (d?.download_url) {
-                dlUrl = d.download_url;
-                title = d.title || title;
+            data = await vredenYtmp3(video.url);
+        } catch (e2) {
+            data = null;
+        }
+    }
+
+    let dlUrl = data?.status && data?.download?.url ? data.download.url : null;
+    let title = data?.metadata?.title || video.title;
+    let author = data?.metadata?.author?.name || video.author?.name;
+    let durSec = data?.metadata?.duration?.seconds ?? data?.metadata?.seconds ?? 0;
+    let thumb = data?.metadata?.thumbnail || video.thumbnail;
+
+    // Fallback: apis-keith, if the primary source failed.
+    if (!dlUrl) {
+        try {
+            const res = await axios.get(`https://apis-keith.vercel.app/download/dlmp3?url=${encodeURIComponent(video.url)}`, { timeout: 30000 });
+            const d = res.data;
+            if (d?.status && d?.result?.downloadUrl) {
+                dlUrl = d.result.downloadUrl;
+                title = d.result.title || title;
             }
         } catch (e) {
-            console.log('GiftedTech ytmp3 failed, trying apis-keith:', e.message);
+            console.log('apis-keith fallback failed:', e.message);
         }
-
-        // Source 2: apis-keith
-        if (!dlUrl) {
-            try {
-                const res = await axios.get(`https://apis-keith.vercel.app/download/dlmp3?url=${encodeURIComponent(videoUrl)}`, { timeout: 30000 });
-                const d = res.data;
-                if (d?.status && d?.result?.downloadUrl) {
-                    dlUrl = d.result.downloadUrl;
-                    title = d.result.title || title;
-                }
-            } catch (e) {
-                console.log('apis-keith failed, trying ruhend-scraper:', e.message);
-            }
-        }
-
-        // Source 3: ruhend-scraper
-        if (!dlUrl) {
-            try {
-                const data = await ytmp3(videoUrl);
-                dlUrl = data?.audio || data?.url || data?.download;
-                title = data?.title || title;
-            } catch (e) {
-                console.log('ruhend-scraper ytmp3 also failed:', e.message);
-            }
-        }
-
-        if (!dlUrl) {
-            return client.sendMessage(remoteJid, { text: '❌ Audio not generated. All sources failed.' }, { quoted: message });
-        }
-
-        await client.sendMessage(remoteJid, {
-            audio: { url: dlUrl },
-            mimetype: 'audio/mpeg',
-            ptt: false,
-            fileName: `${title}.mp3`
-        }, { quoted: message });
-
-        await client.sendMessage(remoteJid, {
-            text: `🎵 *${title}*\n\n*Powered by: KAIRO ZYNEX*`
-        }, { quoted: message });
-
-    } catch (err) {
-        console.error('SONG ERROR:', err);
-        await client.sendMessage(remoteJid, { text: '❌ Something went wrong, try again later.' }, { quoted: message });
     }
+
+    if (!dlUrl) {
+        try { await client.sendMessage(remoteJid, { react: { text: '❌', key: message.key } }); } catch {}
+        return client.sendMessage(remoteJid, { text: '❌ Failed to fetch music. All sources failed.' }, { quoted: message });
+    }
+
+    const minutes = Math.floor(durSec / 60);
+    const seconds = (durSec % 60).toString().padStart(2, '0');
+    const durationStr = durSec ? `${minutes}:${seconds}` : 'N/A';
+
+    const caption =
+        `╭───「 🎵 *KAIRO ZYNEX AUDIO* 」───\n` +
+        `│ 📌 *Title:* ${title}\n` +
+        `│ 👤 *Author:* ${author || 'Unknown'}\n` +
+        `│ ⏱️ *Duration:* ${durationStr}\n` +
+        `╰─────────────────────────☉\n` +
+        `> *Powered by: KAIRO ZYNEX*`;
+
+    if (thumb) {
+        await client.sendMessage(remoteJid, { image: { url: thumb }, caption }, { quoted: message });
+    }
+
+    await client.sendMessage(remoteJid, {
+        audio: { url: dlUrl },
+        mimetype: 'audio/mpeg',
+        ptt: false,
+        fileName: `${title}.mp3`
+    }, { quoted: message });
+
+    try { await client.sendMessage(remoteJid, { react: { text: '✅', key: message.key } }); } catch {}
 }
 
 // ─── .video1 / .vid / .ytv ──────────────────────────────────────────────────
