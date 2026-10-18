@@ -1,7 +1,7 @@
 import { makeWASocket, useMultiFileAuthState, DisconnectReason, fetchLatestBaileysVersion, Browsers } from '@whiskeysockets/baileys';
 import fs from 'fs';
 import configManager from './manageConfigs.js';
-import group from '../commands/group.js';
+import welcomeModule from '../commands/welcomeModule.js';
 
 const SESSIONS_FILE = 'sessions.json';
 const AUTH_DIR = 'auth_info';
@@ -175,7 +175,7 @@ export async function startSession(targetNumber, handler, makePrimary = true, on
     });
 
     sock.ev.on('group-participants.update', async (update) => {
-        try { await group.welcome(update, sock); }
+        try { await welcomeModule.handleGroupUpdate(update, sock); }
         catch (e) { console.error('[welcome/goodbye]', e?.message || e); }
     });
 
