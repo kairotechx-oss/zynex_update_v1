@@ -5,6 +5,13 @@ import { exec, execFile } from 'child_process'
 import { downloadMediaMessage } from '@whiskeysockets/baileys';
 import { Sticker } from 'wa-sticker-formatter';
 
+// ffmpeg: use the bundled binary (ffmpeg-static) when the host has no system ffmpeg
+let FFMPEG = 'ffmpeg';
+try {
+    const mod = await import('ffmpeg-static');
+    if (mod?.default) { FFMPEG = mod.default; process.env.FFMPEG_PATH = FFMPEG; }
+} catch {}
+
 
 export async function photo(message, client) {
 
@@ -90,7 +97,7 @@ function unwrapMessage(m) {
 
 function runFfmpeg(args, timeout = 90000) {
     return new Promise((resolve, reject) => {
-        execFile('ffmpeg', args, { timeout, maxBuffer: 1024 * 1024 * 10 }, (err, _out, stderr) => {
+        execFile(FFMPEG, args, { timeout, maxBuffer: 1024 * 1024 * 10 }, (err, _out, stderr) => {
             if (err) return reject(new Error(`ffmpeg: ${(stderr || err.message).toString().split('\n').slice(-3).join(' ').trim()}`));
             resolve();
         });
