@@ -141,17 +141,19 @@ export async function video(message, client, searchQuery) {
         ];
 
         let videoData = null;
+        const failures = [];
         for (const api of apiMethods) {
             try {
                 const data = await api.method();
                 if (data?.download) { videoData = data; break; }
             } catch (apiErr) {
                 console.log(`[VIDEO] ${api.name} failed:`, apiErr.message);
+                failures.push(`${api.name}: ${apiErr.code || apiErr.response?.status || apiErr.message}`.slice(0, 80));
             }
         }
 
         if (!videoData) {
-            throw new Error('All download sources failed. The content may be unavailable or blocked.');
+            throw new Error(`All download sources failed.\n${failures.join('\n')}`);
         }
 
         const title = videoData.title || videoTitle || 'Video';
@@ -177,7 +179,7 @@ export async function video(message, client, searchQuery) {
         if (error.response?.status === 451 || error.status === 451) {
             errorMessage = '❌ Content unavailable (451). Legal restriction or regional blocking.';
         } else if (error.message?.includes('All download sources failed')) {
-            errorMessage = '❌ All download sources failed. Try again later or try another video.';
+            errorMessage = `❌ ${error.message}`;
         } else if (error.message) {
             errorMessage = '❌ Download failed: ' + error.message;
         }
