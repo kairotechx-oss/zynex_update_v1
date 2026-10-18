@@ -267,152 +267,125 @@ export async function gclink(message, client) {
         await client.sendMessage(remoteJid, { text: `*𝙴𝚁𝚁𝙾𝚁 𝙶𝙴𝙽𝙴𝚁𝙰𝚃𝙸𝙽𝙶 𝙶𝚁𝙾𝚄𝙿 𝙻𝙸𝙽𝙺 𝚈𝙾𝚄 𝙰𝚁𝙴 𝙽𝙾𝚃 𝙰𝙳𝙼𝙸𝙽: ${error.message}*` });
     }
 }
+function ensureUserCfg(number) {
+    configManager.config.users ||= {};
+    configManager.config.users[number] ||= {
+        sudoList: [], prefix: '.', welcome: false, online: false,
+        type: false, record: false, autoreact: false, like: false, view: false,
+        response: true, emoji: '🤖'
+    };
+    return configManager.config.users[number];
+}
+
 export async function antilink(message, client) {
 
     const number = client.user.id.split(':')[0];
-
     const remoteJid = message.key.remoteJid;
 
-    const senderJid = message.key.participant || message.key.remoteJid;
-
     const messageBody = message.message?.conversation || message.message?.extendedTextMessage?.text || "";
+    const option = (messageBody.trim().split(/\s+/)[1] || '').toLowerCase();
 
     try {
+        const cfg = ensureUserCfg(number);
 
-        if(messageBody.toLowerCase().includes("on")){
-
-            if (configManager.config && configManager.config.users[number]) {
-
-                    configManager.config.users[number].antilink = true;
-            }
-
-
-            configManager.save()
-
-            await client.sendMessage(remoteJid, {text:"*𝙰𝙽𝚃𝙸𝙻𝙸𝙽𝙺 𝙴𝙽𝙰𝙱𝙻𝙴*"})
-
-        } else if (messageBody.toLowerCase().includes("off")) {
-
-            if (configManager.config && configManager.config.users[number]) {
-
-                configManager.config.users[number].antilink = false
-            }
-
-            configManager.save()
-
-            await client.sendMessage(remoteJid, {text:"*𝙰𝙽𝚃𝙸𝙻𝙸𝙽𝙺 𝙳𝙸𝚂𝙰𝙱𝙻𝙴*"})
-
-        } else if (messageBody.toLowerCase().includes("kick")) {
-
-              if (configManager.config && configManager.config.users[number]) {
-
-                configManager.config.users[number].antilink = "kick"
-            }
-
-
-            configManager.save()
-
-            await client.sendMessage(remoteJid, {text:"*𝙰𝙽𝚃𝙸𝙻𝙸𝙽𝙺 𝙺𝙸𝙲𝙺 𝙼𝙾𝙳𝙴 𝙴𝙽𝙰𝙱𝙻𝙴*"})
+        if (option === 'on') {
+            cfg.antilink = true;
+            configManager.save();
+            await client.sendMessage(remoteJid, { text: "*✅ 𝙰𝙽𝚃𝙸𝙻𝙸𝙽𝙺 𝙴𝙽𝙰𝙱𝙻𝙴𝙳*\nLinks from non-admins will be deleted (the bot must be admin)." }, { quoted: message });
+        } else if (option === 'off') {
+            cfg.antilink = false;
+            configManager.save();
+            await client.sendMessage(remoteJid, { text: "*✅ 𝙰𝙽𝚃𝙸𝙻𝙸𝙽𝙺 𝙳𝙸𝚂𝙰𝙱𝙻𝙴𝙳*" }, { quoted: message });
+        } else if (option === 'kick') {
+            cfg.antilink = 'kick';
+            configManager.save();
+            await client.sendMessage(remoteJid, { text: "*✅ 𝙰𝙽𝚃𝙸𝙻𝙸𝙽𝙺 𝙺𝙸𝙲𝙺 𝙼𝙾𝙳𝙴 𝙴𝙽𝙰𝙱𝙻𝙴𝙳*\nLinks are deleted and the sender is removed." }, { quoted: message });
+        } else {
+            await client.sendMessage(remoteJid, { text: "*𝚄𝚂𝙰𝙶𝙴: .antilink on | off | kick*" }, { quoted: message });
         }
-
-        else{
-
-            await client.sendMessage(remoteJid, {text:"*𝚂𝙴𝚃 𝙰𝙽 𝙾𝙿𝚃𝙸𝙾𝙽 𝙾𝙽 / 𝙾𝙵𝙵*"})
-        }
-
-        
     } catch (error) {
-        console.error("❌ Error while processing message:", error);
+        console.error("❌ antilink command error:", error);
     }
 }
+
+function normJid(j) {
+    return String(j || '').replace(/:\d+(?=@)/, '');
+}
+
 async function linkDetection(message, client, lids = []) {
 
     const number = client.user.id.split(':')[0];
-
     const remoteJid = message.key.remoteJid;
 
-    const senderJid = message.key.participant || remoteJid;
+    if (!remoteJid?.endsWith("@g.us")) return;
+    if (message.key.fromMe) return;
 
-    const messageBody = message.message?.conversation || message.message?.extendedTextMessage?.text || "";
-
-    const detect = configManager.config?.users[number]?.antilink;
-
-    const botId = number + "@s.whatsapp.net";
-
-    // Ensure lids is an array
-    const botLids = Array.isArray(lids) ? lids : [lids];
-
-    if (!remoteJid.endsWith("@g.us")) return;
-    
-    // If feature is off, return
+    const detect = configManager.config?.users?.[number]?.antilink;
     if (!detect) return;
 
+    const messageBody =
+        message.message?.conversation ||
+        message.message?.extendedTextMessage?.text ||
+        message.message?.imageMessage?.caption ||
+        message.message?.videoMessage?.caption ||
+        "";
+
     try {
-
-        const linkRegex = /(https?:\/\/[^\s]+|www\.[^\s]+|[a-z0-9]+\.(com|net|org|info|biz|io|me|app|site|link|store|xyz|online)\b)/gi;
-
+        const linkRegex = /(https?:\/\/[^\s]+|www\.[^\s]+|chat\.whatsapp\.com\/[^\s]+|\b[a-z0-9-]+\.(com|net|org|info|biz|io|me|app|site|link|store|xyz|online)\b)/i;
         if (!linkRegex.test(messageBody)) return;
 
-        console.log(`*🔗 𝙻𝙸𝙽𝙺 𝙳𝙴𝚃𝙴𝙲𝚃𝙴𝙳: "${messageBody}*`);
+        const senderIds = [message.key.participant, message.key.participantAlt, message.key.remoteJidAlt].filter(Boolean);
+        const botIds = [
+            number + "@s.whatsapp.net",
+            client.user?.id,
+            client.user?.lid,
+            ...(Array.isArray(lids) ? lids : [lids])
+        ].filter(Boolean);
 
-        // Check if sender is admin
-        const senderIsAdmin = await isAdmin(client, remoteJid, senderJid);
+        console.log(`*🔗 LINK DETECTED from ${senderIds[0]}: ${messageBody.slice(0, 80)}`);
 
-        // Check if bot or any linked instance is admin
-        const mainBotIsAdmin = await isAdmin(client, remoteJid, botId);
+        const senderIsAdmin = await isAdmin(client, remoteJid, ...senderIds);
+        if (senderIsAdmin) { console.log("antilink: sender is admin, skip"); return; }
 
-        const linkedBotsAreAdmin = await Promise.all(botLids.map(lid => isAdmin(client, remoteJid, lid)));
-
-        const atLeastOneLinkedBotAdmin = linkedBotsAreAdmin.includes(true);
-
-        const botIsAdmin = mainBotIsAdmin || atLeastOneLinkedBotAdmin;
-
-        // Check if sender is the bot or any of its linked IDs
-        const senderIsBot = senderJid === botId || botLids.includes(senderJid);
-
-        if (!botIsAdmin || senderIsAdmin || senderIsBot) {
-
-            console.log("*⚠️ 𝚂𝙺𝙸𝙿 𝙳𝙴𝙻𝙴𝚃𝙸𝙾𝙽: 𝙱𝙾𝚃 𝙽𝙾𝚃 𝙰𝙳𝙼𝙸𝙽 𝙾𝚁 𝚂𝙴𝙽𝙳𝙴𝚁 𝙸𝚂 𝙰𝙳𝙼𝙸𝙽/𝙱𝙾𝚃*");
-
-            return;
-        }
-
-        // All checks passed: delete
-        await client.sendMessage(remoteJid, { text: "*🚫 𝙻𝙸𝙽𝙺𝚂 𝙰𝚁𝙴 𝙽𝙾𝚃 𝙰𝙻𝙻𝙾𝚆𝙴𝙳! 𝙼𝙴𝚂𝚂𝙰𝙶𝙴 𝙳𝙴𝙻𝙴𝚃𝙴𝙳.*" });
+        const botIsAdmin = await isAdmin(client, remoteJid, ...botIds);
+        if (!botIsAdmin) { console.log("antilink: bot is not admin, cannot delete"); return; }
 
         await client.sendMessage(remoteJid, { delete: message.key });
+        await client.sendMessage(remoteJid, {
+            text: `*🚫 𝙻𝙸𝙽𝙺𝚂 𝙰𝚁𝙴 𝙽𝙾𝚃 𝙰𝙻𝙻𝙾𝚆𝙴𝙳!* @${(senderIds[0] || '').split('@')[0].split(':')[0]}`,
+            mentions: senderIds.slice(0, 1)
+        });
 
-        if (configManager.config?.users[number]?.antilink == "kick") {
-
-            console.log(senderJid)
-
-            await client.groupParticipantsUpdate(remoteJid, [senderJid], "remove");
-        } 
+        if (detect === "kick") {
+            await client.groupParticipantsUpdate(remoteJid, [senderIds[0]], "remove");
+        }
 
     } catch (error) {
-        console.error("❌ Error while processing message:", error);
+        console.error("❌ linkDetection error:", error);
     }
 }
 
 
-// Function to check if a user is an admin in the group
-async function isAdmin(client, groupJid, userJid) {
+// Admin check that works with both phone-number JIDs and LIDs (Baileys 7)
+async function isAdmin(client, groupJid, ...userJids) {
 
     try {
+        const wanted = userJids.flat().filter(Boolean).map(normJid);
+        if (!wanted.length) return false;
 
         const metadata = await client.groupMetadata(groupJid);
 
-        const participants = metadata.participants;
-
-        return participants.some(p => p.id === userJid && (p.admin === "admin" || p.admin === "superadmin"));
+        return metadata.participants.some(p => {
+            if (!p.admin) return false;
+            return [p.id, p.lid, p.phoneNumber, p.jid].filter(Boolean).map(normJid).some(x => wanted.includes(x));
+        });
 
     } catch (error) {
-
         console.error("❌ Error fetching group metadata:", error);
-
         return false;
     }
 }
+
 export async function welcome(update, client) {
 
     const metadata = await client.groupMetadata(update.id);
