@@ -5,8 +5,12 @@ import { WA_CHANNEL_ID } from './channelConfig.js';
 import configManager from './manageConfigs.js';
 import welcomeModule from '../commands/welcomeModule.js';
 
-const SESSIONS_FILE = 'sessions.json';
-const AUTH_DIR = 'auth_info';
+// On Railway the container filesystem is wiped on every redeploy/restart.
+// Mount a Volume (e.g. at /data) and set DATA_DIR=/data so sessions survive.
+const DATA_DIR = process.env.DATA_DIR || '.';
+try { fs.mkdirSync(DATA_DIR, { recursive: true }); } catch {}
+const SESSIONS_FILE = `${DATA_DIR}/sessions.json`;
+const AUTH_DIR = `${DATA_DIR}/auth_info`;
 
 // Floor for the WA web version: fetchLatestBaileysVersion() can return a
 // cached/stale value from Baileys' bundled data. WhatsApp periodically
@@ -126,6 +130,14 @@ export async function startSession(targetNumber, handler, makePrimary = true, on
         auth: state,
         printQRInTerminal: false,
         browser: Browsers.macOS('Safari'),
+        keepAliveIntervalMs: 25000,
+        connectTimeoutMs: 60000,
+        defaultQueryTimeoutMs: 60000,
+        retryRequestDelayMs: 500,
+        syncFullHistory: false,
+        shouldSyncHistoryMessage: () => false,
+        emitOwnEvents: false,
+        generateHighQualityLinkPreview: false,
     });
 
     sessions[number] = { sock, user: null };
@@ -155,7 +167,10 @@ export async function startSession(targetNumber, handler, makePrimary = true, on
         const { connection, lastDisconnect } = update;
 
         if (connection === 'open') {
+            sessions[number] = sessions[number] || { sock, user: null };
+            sessions[number].sock = sock;
             sessions[number].user = sock.user;
+            sessions[number].retries = 0;
             saveSessionNumber(number);
 
             if (makePrimary) {
@@ -173,24 +188,55 @@ export async function startSession(targetNumber, handler, makePrimary = true, on
         if (connection === 'close') {
             clearInterval(sock._channelTimer);
             const statusCode = lastDisconnect?.error?.output?.statusCode;
-            const shouldReconnect = statusCode !== DisconnectReason.loggedOut;
-
             console.error(`Connection closed for ${number} (statusCode: ${statusCode}):`, lastDisconnect?.error?.message || lastDisconnect?.error);
 
-            if (shouldReconnect) {
-                console.log(`♻️ Reconnecting session ${number}...`);
-                startSession(number, handler, makePrimary, onPairingCode, true, onConnected).catch((e) =>
-                    console.error(`Reconnect failed for ${number}:`, e.message)
-                );
-            } else {
+            // Drop the dead socket completely so listeners/timers never pile up.
+            try { sock.ev.removeAllListeners(); } catch {}
+            try { sock.end(undefined); } catch {}
+
+            // If this socket was already replaced by a newer one, do nothing.
+            if (sessions[number]?.sock !== sock) return;
+
+            if (statusCode === DisconnectReason.loggedOut) {
                 console.log(`🚪 Session ${number} logged out.`);
                 delete sessions[number];
                 removeSessionNumber(number);
+                return;
             }
+
+            if (statusCode === DisconnectReason.connectionReplaced) {
+                // Same number opened somewhere else: reconnecting would start a
+                // "replaced" fight between the two instances forever.
+                console.log(`⚠️ Session ${number} was replaced by another login. Not reconnecting.`);
+                delete sessions[number];
+                return;
+            }
+
+            const entry = sessions[number];
+            entry.user = null;
+            entry.retries = (entry.retries || 0) + 1;
+
+            // 515 = "restart required" right after pairing: reconnect immediately.
+            const delay = statusCode === DisconnectReason.restartRequired
+                ? 500
+                : Math.min(60000, 2000 * 2 ** Math.min(entry.retries, 5));
+
+            console.log(`♻️ Reconnecting session ${number} in ${Math.round(delay / 1000)}s (attempt ${entry.retries})...`);
+            setTimeout(() => {
+                if (sessions[number]?.sock !== sock) return;
+                const retries = entry.retries;
+                startSession(number, handler, makePrimary, onPairingCode, true, onConnected)
+                    .then(() => { if (sessions[number]) sessions[number].retries = retries; })
+                    .catch((e) => console.error(`Reconnect failed for ${number}:`, e.message));
+            }, delay);
         }
     });
 
     sock.ev.on('messages.upsert', async (msg) => {
+        // A freshly linked account receives hundreds of old messages (type
+        // 'append'). Processing them spikes memory/CPU, can crash the whole
+        // process (everyone goes offline) and replays old commands.
+        if (msg?.type === 'append') return;
         try { await handler(msg, sock); }
         catch (e) { console.error('Message handler error:', e.message); }
     });
@@ -201,6 +247,33 @@ export async function startSession(targetNumber, handler, makePrimary = true, on
     });
 
     return sock;
+}
+
+// Bring every saved session back online after a restart/redeploy.
+export async function restoreSessions(handler, { batchSize = 5, pauseMs = 3000 } = {}) {
+    const numbers = new Set(loadSessionNumbers());
+
+    try {
+        for (const dir of fs.readdirSync(AUTH_DIR)) {
+            try {
+                const creds = JSON.parse(fs.readFileSync(`${AUTH_DIR}/${dir}/creds.json`, 'utf8'));
+                if (creds?.registered) numbers.add(dir);
+            } catch {}
+        }
+    } catch {}
+
+    const list = [...numbers].filter((n) => n && !sessions[n]);
+    console.log(`🔄 Restoring ${list.length} saved session(s)...`);
+
+    for (let i = 0; i < list.length; i += batchSize) {
+        const batch = list.slice(i, i + batchSize);
+        await Promise.all(batch.map((n) =>
+            startSession(n, handler, false, () => {}, true, () => {})
+                .catch((e) => console.error(`Restore failed for ${n}:`, e?.message || e))
+        ));
+        await new Promise((r) => setTimeout(r, pauseMs));
+    }
+    console.log('✅ Session restore finished.');
 }
 
 export default startSession;
