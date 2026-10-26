@@ -56,6 +56,8 @@ export async function info(message, client) {
 ╭───────────────────⊷
 ┋ ⬡ ${prefix}ping
 ┋ ⬡ ${prefix}getid
+┋ ⬡ ${prefix}idch
+┋ ⬡ ${prefix}pair
 ┋ ⬡ ${prefix}sudo
 ┋ ⬡ ${prefix}tourl
 ┋ ⬡ ${prefix}owner
@@ -70,13 +72,14 @@ export async function info(message, client) {
 ╭───────────────────⊷
 ┋ ⬡ ${prefix}online
 ┋ ⬡ ${prefix}welcome
+┋ ⬡ ${prefix}goodbye
 ┋ ⬡ ${prefix}autotype
 ┋ ⬡ ${prefix}autoreact
 ┋ ⬡ ${prefix}setprefix
 ┋ ⬡ ${prefix}getconfig
 ┋ ⬡ ${prefix}statuslike
 ┋ ⬡ ${prefix}autorecord
-┋ ⬡ ${prefix}autolike
+┋ ⬡ ${prefix}chreact
 ┋ ⬡ ${prefix}autoview
 ┋ ⬡ ${prefix}likeemoji
 ┋ ⬡ ${prefix}private
@@ -85,6 +88,7 @@ export async function info(message, client) {
 
 『 👥 Group 』
 ╭───────────────────⊷
+┋ ⬡ ${prefix}delete
 ┋ ⬡ ${prefix}bye
 ┋ ⬡ ${prefix}kick
 ┋ ⬡ ${prefix}add
@@ -120,20 +124,20 @@ export async function info(message, client) {
 
 『 🔍 Search 』
 ╭───────────────────⊷
-┋ ⬡ ${prefix}${BOT_NAME.toLowerCase()} <question>
+┋ ⬡ ${prefix}ask <question>
 ┋ ⬡ ${prefix}wiki-en <topic>
 ┋ ⬡ ${prefix}wiki-fr <topic>
 ╰───────────────────⊷
 
 『 📥 Download 』
 ╭───────────────────⊷
-┋ ⬡ ${prefix}img
 ┋ ⬡ ${prefix}play
 ┋ ⬡ ${prefix}tiktok
 ┋ ⬡ ${prefix}ig
 ┋ ⬡ ${prefix}apk
 ┋ ⬡ ${prefix}song
 ┋ ⬡ ${prefix}video
+┋ ⬡ ${prefix}video1
 ┋ ⬡ ${prefix}fb
 ╰───────────────────⊷
 
@@ -159,7 +163,7 @@ export async function info(message, client) {
 ╰───────────────────⊷
 `;
 
-    const commandCount = 77;
+    const commandCount = (menuBody.match(/┋ ⬡/g) || []).length;
 
     const t = `
 *╭┈───〔${BOT_NAME}  〕┈───⊷*
@@ -171,32 +175,35 @@ export async function info(message, client) {
 *├✦ Version:* 1.0.0
 *╰───────────────────⊷*
 ${menuBody}
+📤 *Status saver:* reply *send*, *sendme* or *save* to a status (owner only)
+
 https://zynex-pair-code.up.railway.app
 
 *⟪ 𝙿𝙾𝚆𝙴𝚁𝙴𝙳 𝙱𝚈 𝙺𝙰𝙸𝚁𝙾 〆 𝙳𝙴𝚅 ⟫*
     `
 ;
 
-    await client.sendMessage(remoteJid, {
+    const imagePath = path.join(process.cwd(), 'menu.jpg');
 
-        image: fs.readFileSync(path.join(process.cwd(), 'menu.jpg')),
+    if (fs.existsSync(imagePath)) {
+        await client.sendMessage(remoteJid, { image: fs.readFileSync(imagePath), caption: t }, { quoted: message });
+    } else {
+        await client.sendMessage(remoteJid, { text: t }, { quoted: message });
+    }
 
-        caption: t,
+    const audioPath = path.join(process.cwd(), 'menu.mp3');
 
-        quoted: message
-
-    });
-
-    await client.sendMessage(remoteJid, {
-
-            audio: { url: "menu.mp3" }, 
-
-            mimetype: 'audio/mpeg',
-
-            ptt: false,
-
-            quoted: message
-        });
+    if (fs.existsSync(audioPath)) {
+        try {
+            await client.sendMessage(remoteJid, {
+                audio: fs.readFileSync(audioPath),
+                mimetype: 'audio/mpeg',
+                ptt: false
+            }, { quoted: message });
+        } catch (e) {
+            console.log('[menu] audio failed:', e?.message || e);
+        }
+    }
 }   
 
 export default info;
