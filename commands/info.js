@@ -117,7 +117,7 @@ export async function info(message, client) {
 ┋ ⬡ ${prefix}toaudio
 ┋ ⬡ ${prefix}sticker
 ┋ ⬡ ${prefix}logo
-┋ ⬡ ${prefix}aigen
+┋ ⬡ ${prefix}aiimage
 ┋ ⬡ ${prefix}telegram
 ┋ ⬡ ${prefix}toimage
 ╰───────────────────⊷
