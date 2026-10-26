@@ -273,6 +273,7 @@ async function handleIncomingMessage(event, client) {
                 case 'ig':
                 case 'instagram':
                     return await social.instagram(message, client, args.join(' '));
+                case 'aiimage':
                 case 'aigen':
                 case 'imagine':
                     return await aiimage.aigen(message, client, args.join(' '));
