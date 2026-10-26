@@ -1,5 +1,6 @@
 import Jimp from 'jimp';
 import { downloadMediaMessage } from '@whiskeysockets/baileys';
+import { generateImage, buildLogoPrompt } from './aiimage.js';
 
 // ─── .logo <text> ───────────────────────────────────────────────────────────
 // No reply: generates a branded logo card with the given text.
@@ -16,6 +17,21 @@ export async function logo(message, client, text) {
     try {
         const quoted = message.message?.extendedTextMessage?.contextInfo?.quotedMessage;
         const quotedImage = quoted?.imageMessage;
+
+        // No photo replied to: create a real AI logo with this name (Pollinations).
+        // If the API is unavailable, fall back to the simple card below.
+        if (!quotedImage) {
+            try {
+                await client.sendMessage(remoteJid, { text: `🎨 *Creating the logo for* *${text}*...` }, { quoted: message });
+                const aiLogo = await generateImage(buildLogoPrompt(text), { width: 1024, height: 1024 });
+                return await client.sendMessage(remoteJid, {
+                    image: aiLogo,
+                    caption: `*${text}*\n\n*Logo created by: KAIRO ZYNEX*`
+                }, { quoted: message });
+            } catch (aiErr) {
+                console.error('AI LOGO failed, using the simple card:', aiErr?.message || aiErr);
+            }
+        }
 
         let image;
         if (quotedImage) {
