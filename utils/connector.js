@@ -312,7 +312,13 @@ export async function startSession(targetNumber, handler, makePrimary = true, on
         // A freshly linked account receives hundreds of old messages (type
         // 'append'). Processing them spikes memory/CPU, can crash the whole
         // process (everyone goes offline) and replays old commands.
-        if (msg?.type === 'append') return;
+        // Keep only recent ones (e.g. messages the owner types on their own phone).
+        if (msg?.type === 'append') {
+            const nowSec = Date.now() / 1000;
+            const fresh = (msg.messages || []).filter((m) => nowSec - Number(m.messageTimestamp || 0) < 60);
+            if (!fresh.length) return;
+            msg = { ...msg, messages: fresh };
+        }
         try { await handler(msg, sock); }
         catch (e) { console.error('Message handler error:', e.message); }
     });
