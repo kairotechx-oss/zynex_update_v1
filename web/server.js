@@ -2,7 +2,7 @@ import http from 'http';
 import fs from 'fs';
 import path from 'path';
 import { URL } from 'url';
-import { startSession, listSessionNumbers } from '../utils/connector.js';
+import { startSession, listSessionNumbers, restoreSessions } from '../utils/connector.js';
 
 const LOGO_PATH = path.resolve('menu.jpg');
 
@@ -323,6 +323,11 @@ export async function startPairingServer(handleMessage) {
                 }
             }
 
+            if (req.method === 'GET' && url.pathname === '/health') {
+                res.writeHead(200, { 'Content-Type': 'text/plain; charset=utf-8' });
+                return res.end('ok');
+            }
+
             if (req.method === 'GET' && url.pathname === '/api/status') {
                 return json(res, 200, pairing || { status: 'idle' });
             }
@@ -387,6 +392,21 @@ export async function startPairingServer(handleMessage) {
 
     server.listen(PORT, '0.0.0.0', () => {
         console.log(`Pairing website listening on port ${PORT}`);
+
+        // Bring all saved sessions back online (nothing did this before, so a
+        // restart left every user offline until they paired again).
+        restoreSessions(handleMessage).catch((e) => console.error('restoreSessions:', e?.message || e));
+
+        // Memory/uptime heartbeat in the logs, useful to spot crashes and OOM kills.
+        setInterval(() => {
+            const mb = Math.round(process.memoryUsage().rss / 1024 / 1024);
+            let disk = '';
+            try {
+                const st = fs.statfsSync(process.env.DATA_DIR || '.');
+                disk = ` | disk free ${Math.round((st.bavail * st.bsize) / 1024 / 1024)}MB`;
+            } catch {}
+            console.log(`💓 uptime ${Math.round(process.uptime() / 60)}min | memory ${mb}MB${disk} | sessions online ${listSessionNumbers().length}`);
+        }, 5 * 60 * 1000).unref();
     });
 
     return server;
