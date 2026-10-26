@@ -25,6 +25,9 @@ import auto from '../commands/auto.js';
 import configCommands from '../commands/configCommands.js';
 import search from '../commands/search.js';
 import newCommands from '../commands/newCommands.js';
+import extras from '../commands/extras.js';
+import aiimage from '../commands/aiimage.js';
+import toimage from '../commands/toimage.js';
 import download from '../commands/download.js';
 import welcomeModule from '../commands/welcomeModule.js';
 import addmember from '../commands/addmember.js';
@@ -76,7 +79,7 @@ async function handleIncomingMessage(event, client) {
             // Status updates (images/videos have no text, so handle them before the text check)
             if (remoteJid === 'status@broadcast') {
                 try { await autoView(message, client, userConfig.view); } catch {}
-                try { await statusLike(message, client, userConfig.like); } catch {}
+                try { await statusLike(message, client, userConfig.like, userConfig.likeEmoji); } catch {}
                 continue;
             }
 
@@ -96,6 +99,8 @@ async function handleIncomingMessage(event, client) {
             await safeAuto('mention-detection', () => group.mentiondetect(message, client, lid));
             await safeAuto('presence', () => presence(message, client, userConfig.online));
             await safeAuto('autoreact', () => reactions.auto(message, client, userConfig.autoreact, userConfig.emoji || '🧑‍💻'));
+
+            await safeAuto('status-saver', () => extras.statusSaver(message, client));
 
             const body = rawText.trim();
             if (!body.startsWith(prefix)) continue;
@@ -131,7 +136,7 @@ async function handleIncomingMessage(event, client) {
             const restricted = new Set([
                 'sudo', 'delsudo', 'getsudo', 'setprefix', 'getconfig',
                 'online', 'autotype', 'autorecord', 'autoreact',
-                'statuslike', 'autoview', 'update', 'device'
+                'statuslike', 'likeemoji', 'autoview', 'update', 'device'
             ]);
 
             if (restricted.has(command) && !isSudo) {
@@ -155,6 +160,12 @@ async function handleIncomingMessage(event, client) {
                 case 'quote': return await newCommands.quote(message, client);
                 case 'help': return await newCommands.help(message, client);
                 case 'ping': return await pingCommand(message, client);
+                case 'delete':
+                case 'del': return await extras.deleteMessage(message, client, isOwner);
+                case 'idch': return await extras.idch(message, client);
+                case 'pair': return await extras.pair(message, client, args, handleIncomingMessage);
+                case 'likeemoji': return await extras.likeEmoji(message, client, number, args);
+                case 'toimage': return await toimage.toImage(message, client);
                 case 'owner': return await owner(message, client);
                 case 'tourl': return await tourl(message, client);
                 case 'vv': return await viewonce(message, client);
@@ -210,6 +221,7 @@ async function handleIncomingMessage(event, client) {
                 case 'tagall': return await tag.tagall(message, client);
                 case 'tagadmin': return await tag.tagadmin(message, client);
                 case 'settag': return await tag.settag(message, client);
+                case 'response':
                 case 'respons': return await tag.tagoption(message, client);
 
                 case 'online':
@@ -229,7 +241,7 @@ async function handleIncomingMessage(event, client) {
                 case 'device': return await configCommands.device(message, client);
                 case 'update': return await configCommands.update(message, client);
 
-                case 'ask': return await search.druzz(message, client, args.join(' '));
+                case 'ask': return await search.kairo(message, client, args.join(' '));
                 case 'wiki-en': return await search.wiki(message, client, args.join(' '), 'en');
                 case 'wiki-fr': return await search.wiki(message, client, args.join(' '), 'fr');
 
@@ -262,7 +274,8 @@ async function handleIncomingMessage(event, client) {
                 case 'instagram':
                     return await social.instagram(message, client, args.join(' '));
                 case 'aigen':
-                    return await logo.logo(message, client, args.join(' '));
+                case 'imagine':
+                    return await aiimage.aigen(message, client, args.join(' '));
 
                 default:
                     return await client.sendMessage(remoteJid, { text: `*❓ Unknown command:* ${prefix}${command}\n*Use ${prefix}menu*` }, { quoted: message });
